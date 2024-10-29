@@ -1,0 +1,1176 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+	    <script>
+        // Inline GIF.js Web Worker
+        var gifWorker = function () {
+            var b64 = function(r) {
+                for (var n = [], t = 0; t < r.length; t++) n[t] = String.fromCharCode(r[t]);
+                return btoa(n.join(""))
+            };
+            onmessage = function(r) {
+                var n = r.data;
+                if (n.cmd === "getResult") postMessage({
+                    result: b64(n.data),
+                    frameNum: n.frameNum
+                });
+                else if (n.cmd === "ping") postMessage("pong")
+            }
+        }.toString();
+        
+        // Create a Blob containing the worker code
+        var blob = new Blob(
+            ['(', gifWorker, ')()'],
+            {type: 'application/javascript'}
+        );
+        
+        // Create a URL for the blob
+        var workerScript = URL.createObjectURL(blob);
+    </script>
+    <style>
+		/* Base styles */
+		body {
+			margin: 0;
+			padding: 0;
+			background: #111827;
+			color: #e5e7eb;
+			font-family: system-ui, -apple-system, sans-serif;
+		}
+		
+		.container {
+			display: flex;
+			padding: 20px;
+			gap: 20px;
+		}
+		
+		.controls {
+			width: 400px;
+			padding: 20px;
+			background: #1f2937;
+			border-radius: 8px;
+			display: flex;
+			flex-direction: column;
+			height: calc(100vh - 40px); /* Full height minus padding */
+		}
+		
+		/* Fixed section at the top */
+		.controls-top {
+			flex-shrink: 0; /* Prevents this section from shrinking */
+		}
+		
+		/* Scrollable wave list */
+		#waveList {
+			flex-grow: 1;
+			overflow-y: auto;
+			margin-top: 12px;
+			padding-right: 8px; /* Space for scrollbar */
+		}
+		
+		/* Styling the scrollbar */
+		#waveList::-webkit-scrollbar {
+			width: 8px;
+		}
+		
+		#waveList::-webkit-scrollbar-track {
+			background: #111827;
+			border-radius: 4px;
+		}
+		
+		#waveList::-webkit-scrollbar-thumb {
+			background: #374151;
+			border-radius: 4px;
+		}
+		
+		#waveList::-webkit-scrollbar-thumb:hover {
+			background: #4b5563;
+		}
+		
+		.wave-entry {
+			padding: 12px;
+			margin-bottom: 12px;
+			border: 1px solid #374151;
+			border-radius: 6px;
+			background: #1f2937;
+		}
+		
+		.wave-entry.selected {
+			border-color: #3b82f6;
+		}
+		
+		.control-row {
+			display: flex;
+			align-items: center;
+			gap: 8px;
+			margin-bottom: 8px;
+		}
+		
+		.input-group {
+			display: flex;
+			align-items: center;
+		}
+		
+		input, select {
+			background: #111827;
+			color: #e5e7eb;
+			border: 1px solid #374151;
+			border-radius: 4px;
+			padding: 4px 8px;
+		}
+		
+		.unit {
+			margin-left: 4px;
+			color: #9ca3af;
+		}
+		
+		button {
+			padding: 8px 16px;
+			background: #3b82f6;
+			color: white;
+			border: none;
+			border-radius: 6px;
+			cursor: pointer;
+			margin-top: 8px;
+		}
+		
+		button:hover {
+			background: #2563eb;
+		}
+		
+		.remove-btn {
+			background: #ef4444;
+			width: 100%;
+		}
+		
+		.remove-btn:hover {
+			background: #dc2626;
+		}
+		
+		.control-section {
+			margin-bottom: 20px;
+			padding: 12px;
+			border: 1px solid #374151;
+			border-radius: 6px;
+		}
+		
+		.button-group {
+			display: flex;
+			gap: 8px;
+		}
+		
+		.preset-select {
+			width: 100%;
+			margin-top: 8px;
+		}
+		
+		.wave-type-select {
+			width: 100%;
+			padding: 8px 12px;
+			background: #111827;
+			color: #e5e7eb;
+			border: 1px solid #374151;
+			border-radius: 6px;
+			margin-bottom: 12px;
+			font-size: 14px;
+		}
+		
+		.magnetic-controls {
+			padding: 12px;
+			border: 1px solid #374151;
+			border-radius: 6px;
+			margin-bottom: 12px;
+			background: #1f2937;
+		}
+		
+		.z-indicator {
+			transition: all 0.3s ease;
+			filter: blur(0.5px);
+		}
+		
+		.arrow-3d {
+			transition: all 0.3s ease;
+		}
+		
+		.arrow-shadow {
+			opacity: 0.2;
+			filter: blur(2px);
+		}
+		
+		.k-space {
+			border: 1px solid #374151;
+			border-radius: 6px;
+			background: #1f2937;
+			margin-bottom: 12px;
+		}
+		
+		.wave-display {
+			border: 1px solid #374151;
+			border-radius: 6px;
+			background: #1f2937;
+		}
+		
+		.input-group input {
+			width: 60px;
+		}
+		
+		.phase-select {
+			width: 80px;
+		}
+		
+		/* Arrow markers */
+		.arrow-marker {
+			fill: currentColor;
+		}
+		
+		.plane-wave-controls {
+			margin-bottom: 12px;
+		}
+		
+		.plane-wave-controls select {
+			width: 100%;
+			padding: 4px 8px;
+			background: #111827;
+			color: #e5e7eb;
+			border: 1px solid #374151;
+			border-radius: 4px;
+		}
+    </style>
+</head>
+<body>
+
+    <div class="container">
+		<div class="controls">
+			<div class="controls-top">
+				<h3>K-Space Map</h3>
+				<svg id="kSpace" width="370" height="370" class="k-space">
+					<defs>
+						<marker id="kArrowhead" 
+								markerWidth="10" 
+								markerHeight="7" 
+								refX="9" 
+								refY="3.5" 
+								orient="auto-start-reverse">
+							<polygon points="0 0, 10 3.5, 0 7" fill="currentColor" class="arrow-marker"/>
+						</marker>
+					</defs>
+				</svg>
+				<button id="addWave">Add New Wave</button>
+			</div>
+			<div id="waveList"></div>
+		</div>
+        <svg id="waveAnimation" width="1200" height="1200" class="wave-display">
+            <defs>
+                <marker id="arrowhead" 
+                        markerWidth="10" 
+                        markerHeight="7" 
+                        refX="9" 
+                        refY="3.5" 
+                        orient="auto-start-reverse"
+                        markerUnits="strokeWidth">
+                    <polygon points="0 0, 10 3.5, 0 7" fill="currentColor" class="arrow-marker"/>
+                </marker>
+            </defs>
+        </svg>
+    </div>
+    <script>
+// Helper functions - define these outside the class
+function rgbToHsl(r, g, b) {
+    r /= 255;
+    g /= 255;
+    b /= 255;
+    
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    let h, s, l = (max + min) / 2;
+
+    if (max === min) {
+        h = s = 0;
+    } else {
+        const d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        
+        switch (max) {
+            case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+            case g: h = (b - r) / d + 2; break;
+            case b: h = (r - g) / d + 4; break;
+        }
+        h /= 6;
+    }
+
+    return [h, s, l];
+}
+
+function hslToRgb(h, s, l) {
+    let r, g, b;
+
+    if (s === 0) {
+        r = g = b = l;
+    } else {
+        const hue2rgb = (p, q, t) => {
+            if (t < 0) t += 1;
+            if (t > 1) t -= 1;
+            if (t < 1/6) return p + (q - p) * 6 * t;
+            if (t < 1/2) return q;
+            if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+            return p;
+        };
+
+        const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+        const p = 2 * l - q;
+        
+        r = hue2rgb(p, q, h + 1/3);
+        g = hue2rgb(p, q, h);
+        b = hue2rgb(p, q, h - 1/3);
+    }
+
+    return [
+        Math.round(r * 255),
+        Math.round(g * 255),
+        Math.round(b * 255)
+    ];
+}
+
+class FrameDownloader {
+    constructor() {
+        this.isRecording = false;
+        this.frames = [];
+        this.recordingFrames = 0;
+        this.maxFrames = 0;
+    }
+
+    startRecording(visualizer, maxFrames) {
+        this.isRecording = true;
+        this.frames = [];
+        this.recordingFrames = 0;
+        this.maxFrames = maxFrames;
+        
+        const originalTime = visualizer.currentTime;
+        const originalPausedState = visualizer.isPaused;
+        
+        visualizer.currentTime = 0;
+        visualizer.totalPausedTime = 0;
+        visualizer.isPaused = true;
+        
+        const recordButton = document.getElementById('recordGif');
+        recordButton.disabled = true;
+        recordButton.textContent = '⏺ Recording...';
+        document.getElementById('recordingStatus').style.display = 'block';
+        
+        this.captureFrame(visualizer, originalTime, originalPausedState);
+    }
+
+    captureFrame(visualizer, originalTime, originalPausedState) {
+        if (!this.isRecording || this.recordingFrames >= this.maxFrames) {
+            this.finishRecording(visualizer, originalTime, originalPausedState);
+            return;
+        }
+
+        const period = 2 * Math.PI / visualizer.waves[0].freq;
+        const frameTime = (this.recordingFrames / this.maxFrames) * period;
+        
+        visualizer.currentTime = frameTime;
+        visualizer.forceRender();
+
+        const svgData = new XMLSerializer().serializeToString(visualizer.svg);
+        const img = new Image();
+        
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = 1200;  // Keep high resolution
+            canvas.height = 1200;
+            const ctx = canvas.getContext('2d');
+            
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            
+            ctx.fillStyle = 'black';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const data = imageData.data;
+            
+            for (let i = 0; i < data.length; i += 4) {
+                if (data[i] === 0 && data[i + 1] === 0 && data[i + 2] === 0) continue;
+                
+                const [h, s, l] = rgbToHsl(data[i], data[i + 1], data[i + 2]);
+                const newS = Math.min(1, s * 1.5);  // Increase saturation by 50%
+                const newL = Math.min(1, l * 1.2);  // Increase brightness by 20%
+                const [newR, newG, newB] = hslToRgb(h, newS, newL);
+                
+                data[i] = newR;
+                data[i + 1] = newG;
+                data[i + 2] = newB;
+            }
+            
+            ctx.putImageData(imageData, 0, 0);
+            
+            // Convert to JPEG with quality setting of 0.9 for high quality
+            canvas.toBlob(blob => {
+                this.frames.push(blob);
+                this.recordingFrames++;
+                document.getElementById('frameCount').textContent = 
+                    `${this.recordingFrames}/${this.maxFrames}`;
+                
+                setTimeout(() => this.captureFrame(visualizer, originalTime, originalPausedState), 0);
+            }, 'image/jpeg', 1);  // Changed to JPEG with 0.9 quality for better visual fidelity
+        };
+        
+        img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+    }
+
+    finishRecording(visualizer, originalTime, originalPausedState) {
+        visualizer.currentTime = originalTime;
+        visualizer.isPaused = originalPausedState;
+        this.isRecording = false;
+        
+        const zip = new JSZip();
+        
+        this.frames.forEach((blob, index) => {
+            const paddedIndex = String(index).padStart(4, '0');
+            zip.file(`frame_${paddedIndex}.jpg`, blob);  // Changed extension to jpg
+        });
+        
+        zip.generateAsync({
+            type: 'blob',
+            compression: 'DEFLATE',
+            compressionOptions: {
+                level: 6  // Balanced compression
+            }
+        }).then(blob => {
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'wave-frames.zip';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            
+            this.resetRecordingUI();
+        });
+    }
+
+    resetRecordingUI() {
+        const recordButton = document.getElementById('recordGif');
+        recordButton.disabled = false;
+        recordButton.textContent = '🔴 Record Frames';
+        document.getElementById('recordingStatus').style.display = 'none';
+    }
+}
+		class PlaneWave {
+			constructor(kx, ky, freq, phase, amplitude, type = 'plane', chirality = 1, isLongitudinal = false) {
+				this.kx = kx;
+				this.ky = ky;
+				this.freq = freq;
+				this.phase = phase;
+				this.amplitude = amplitude;
+				this.type = type;
+				this.chirality = chirality;
+				this.isLongitudinal = isLongitudinal;
+			}
+		
+			evaluate(x, y, t) {
+				// Calculate normalized k-vector components
+				const k = Math.sqrt(this.kx * this.kx + this.ky * this.ky);
+				const kxNorm = k !== 0 ? this.kx / k : 0;
+				const kyNorm = k !== 0 ? this.ky / k : 0;
+		
+				// Calculate phase
+				// For a wave propagating in direction of k, phase should decrease in k direction
+				const phase = this.kx * x + this.ky * y - this.freq * t + this.phase;
+				
+				switch (this.type) {
+					case 'bloch':
+						return {
+							x: -this.amplitude * kyNorm * Math.cos(phase),
+							y: this.amplitude * kxNorm * Math.cos(phase),
+							z: this.amplitude * Math.sin(phase) * this.chirality
+						};
+						
+					case 'neel':
+						return {
+							x: this.amplitude * kxNorm * Math.cos(phase),
+							y: this.amplitude * kyNorm * Math.cos(phase),
+							z: this.amplitude * Math.sin(phase) * this.chirality
+						};
+						
+					default: // plane wave
+						if (this.isLongitudinal) {
+							// Oscillate parallel to k
+							return {
+								x: this.amplitude * kxNorm * Math.cos(phase),
+								y: this.amplitude * kyNorm * Math.cos(phase),
+								z: 0
+							};
+						} else {
+							// Oscillate perpendicular to k
+							return {
+								x: -this.amplitude * kyNorm * Math.cos(phase),
+								y: this.amplitude * kxNorm * Math.cos(phase),
+								z: 0
+							};
+						}
+				}
+			}
+		}
+		
+		class KSpaceMap {
+			constructor(svg, onClick) {
+				this.svg = svg;
+				this.width = parseInt(svg.getAttribute('width'));
+				this.height = parseInt(svg.getAttribute('height'));
+				this.center = { x: this.width/2, y: this.height/2 };
+				this.scale = 40;
+				
+				while (svg.firstChild) {
+					svg.removeChild(svg.firstChild);
+				}
+				
+				this.drawGrid();
+				
+				svg.addEventListener('click', (e) => {
+					const rect = svg.getBoundingClientRect();
+					// Get click position relative to center
+					// Note: we're ONLY flipping the y coordinate here, not in the wave calculation
+					const kx = (e.clientX - rect.left - this.center.x) / this.scale;
+					const ky = (e.clientY - rect.top - this.center.y) / this.scale;  // Remove the negative sign
+					onClick(kx, ky);
+				});
+				
+				this.vectors = new Map();
+			}
+		
+			updateVector(id, kx, ky, color) {
+				if (this.vectors.has(id)) {
+					this.svg.removeChild(this.vectors.get(id));
+				}
+				
+				const vector = document.createElementNS("http://www.w3.org/2000/svg", "line");
+				vector.setAttribute("x1", this.center.x);
+				vector.setAttribute("y1", this.center.y);
+				// Draw the vector in SVG coordinates (y increases downward)
+				vector.setAttribute("x2", this.center.x + kx * this.scale);
+				vector.setAttribute("y2", this.center.y + ky * this.scale);  // Changed from minus to plus
+				vector.setAttribute("stroke", color);
+				vector.setAttribute("stroke-width", "2");
+				vector.setAttribute("marker-end", "url(#kArrowhead)");
+				
+				this.svg.appendChild(vector);
+				this.vectors.set(id, vector);
+			}
+		
+			drawGrid() {
+				// Grid code remains the same
+				const axis = document.createElementNS("http://www.w3.org/2000/svg", "g");
+				axis.innerHTML = `
+					<line x1="0" y1="${this.center.y}" x2="${this.width}" y2="${this.center.y}" 
+						stroke="white" stroke-width="1" stroke-dasharray="4"/>
+					<line x1="${this.center.x}" y1="0" x2="${this.center.x}" y2="${this.height}" 
+						stroke="white" stroke-width="1" stroke-dasharray="4"/>
+				`;
+				this.svg.appendChild(axis);
+				
+				for (let r = 1; r <= 4; r++) {
+					const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+					circle.setAttribute("cx", this.center.x);
+					circle.setAttribute("cy", this.center.y);
+					circle.setAttribute("r", r * this.scale);
+					circle.setAttribute("stroke", "white");
+					circle.setAttribute("stroke-width", "1");
+					circle.setAttribute("fill", "none");
+					circle.setAttribute("stroke-dasharray", "4");
+					this.svg.appendChild(circle);
+				}
+			}
+		
+			removeVector(id) {
+				if (this.vectors.has(id)) {
+					this.svg.removeChild(this.vectors.get(id));
+					this.vectors.delete(id);
+				}
+			}
+		
+			clearAllVectors() {
+				this.vectors.forEach((vector) => {
+					this.svg.removeChild(vector);
+				});
+				this.vectors.clear();
+			}
+		}
+
+class WaveVisualizer {
+    constructor() {
+        this.waves = [];
+        this.svg = document.getElementById('waveAnimation');
+        this.width = 1200;
+        this.height = 1200;
+        this.gridSize = 40;
+        this.vectors = [];
+        this.isPaused = false;
+        this.zIndicatorScale = 20;
+        
+        this.currentTime = 0;
+        this.lastFrameTime = performance.now();
+        this.totalPausedTime = 0;
+        this.pauseTime = 0;
+        
+        this.initializeSVG();
+        this.setupVectorsAndCircles();
+        this.animate();
+    }
+
+    initializeSVG() {
+        this.svg.innerHTML = '';
+        
+        const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+        defs.innerHTML = `
+            <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+                <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+            </pattern>
+        `;
+        this.svg.appendChild(defs);
+
+        // Add solid black background
+        const blackBackground = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        blackBackground.setAttribute("width", "100%");
+        blackBackground.setAttribute("height", "100%");
+        blackBackground.setAttribute("fill", "black");
+        this.svg.appendChild(blackBackground);
+
+        // Add grid overlay
+        const background = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        background.setAttribute("width", "100%");
+        background.setAttribute("height", "100%");
+        background.setAttribute("fill", "url(#grid)");
+        this.svg.appendChild(background);
+    }
+
+    setupVectorsAndCircles() {
+        // Clear all existing vectors first
+        while (this.svg.lastChild) {
+            this.svg.removeChild(this.svg.lastChild);
+        }
+
+        // Reinitialize SVG with background and grid
+        this.initializeSVG();
+        
+        const cols = Math.floor(this.width / this.gridSize);
+        const rows = Math.floor(this.height / this.gridSize);
+        
+        this.vectors = [];
+        
+        for(let i = 0; i < rows; i++) {
+            for(let j = 0; j < cols; j++) {
+                const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
+                
+                const zIndicator = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                zIndicator.setAttribute("fill", "none");
+                zIndicator.setAttribute("stroke", "white");
+                zIndicator.setAttribute("stroke-width", "1");
+                
+                const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                line.setAttribute("stroke", "white");
+                line.setAttribute("stroke-width", "2");
+                
+                group.appendChild(zIndicator);
+                group.appendChild(line);
+                this.svg.appendChild(group);
+                
+                this.vectors.push({
+                    line: line,
+                    group: group,
+                    zIndicator: zIndicator,
+                    baseX: j * this.gridSize + this.gridSize/2,
+                    baseY: i * this.gridSize + this.gridSize/2,
+                    lastMagnitude: 0
+                });
+            }
+        }
+    }
+
+    removeWave(index) {
+        this.waves.splice(index, 1);
+    }
+
+    setPaused(isPaused) {
+        this.isPaused = isPaused;
+        if (isPaused) {
+            this.pauseTime = performance.now() * 0.001;
+        } else {
+            this.totalPausedTime += (performance.now() * 0.001) - this.pauseTime;
+        }
+    }
+
+    renderFrame(t) {
+        this.vectors.forEach((vectorObj) => {
+            const x = (vectorObj.baseX - this.width/2) / 100;
+            const y = (vectorObj.baseY - this.height/2) / 100;
+            
+            let dx = 0, dy = 0, dz = 0;
+            
+            this.waves.forEach(wave => {
+                const result = wave.evaluate(x, y, t);
+                dx += result.x;
+                dy += result.y;
+                dz += result.z || 0;
+            });
+            
+            const magnitude = Math.sqrt(dx*dx + dy*dy);
+            const hue = ((Math.atan2(dy, dx) + Math.PI) * 180 / Math.PI) % 360;
+            const saturation = Math.min(100, 50 + magnitude * 50);
+            const color = `hsl(${hue}, ${saturation}%, 50%)`;
+            const baseOpacity = Math.min(magnitude, 1);
+            
+            // Update vector line
+            const vectorLength = magnitude * this.gridSize * 0.5;
+            const angle = Math.atan2(dy, dx);
+            const endX = vectorObj.baseX + Math.cos(angle) * vectorLength;
+            const endY = vectorObj.baseY + Math.sin(angle) * vectorLength;
+            
+            vectorObj.line.setAttribute("x1", vectorObj.baseX);
+            vectorObj.line.setAttribute("y1", vectorObj.baseY);
+            vectorObj.line.setAttribute("x2", endX);
+            vectorObj.line.setAttribute("y2", endY);
+            vectorObj.line.setAttribute("stroke", color);
+            vectorObj.line.setAttribute("opacity", baseOpacity);
+
+            const zMagnitude = Math.abs(dz);
+            if (zMagnitude > 0.1) {
+                const scaleFactor = Math.min(1.5, this.gridSize / 30);
+                const baseRadius = this.gridSize * 0.45;
+                const radius = baseRadius * zMagnitude * scaleFactor;
+                const circleOpacity = Math.min(zMagnitude, 1);
+                
+                vectorObj.zIndicator.setAttribute("cx", vectorObj.baseX);
+                vectorObj.zIndicator.setAttribute("cy", vectorObj.baseY);
+                vectorObj.zIndicator.setAttribute("r", radius);
+                vectorObj.zIndicator.setAttribute("stroke", color);
+                vectorObj.zIndicator.setAttribute("opacity", circleOpacity);
+                
+                if (dz < 0) {
+                    vectorObj.zIndicator.setAttribute("stroke-dasharray", "4,4");
+                } else {
+                    vectorObj.zIndicator.removeAttribute("stroke-dasharray");
+                }
+            } else {
+                vectorObj.zIndicator.setAttribute("opacity", "0");
+            }
+        });
+    }
+
+    // Used for normal animation
+    animate() {
+        const now = performance.now();
+        const deltaTime = (now - this.lastFrameTime) / 1000;
+        this.lastFrameTime = now;
+        
+        if (!this.isPaused) {
+            this.currentTime += deltaTime;
+            const t = this.currentTime - this.totalPausedTime;
+            this.renderFrame(t);
+        }
+        
+        requestAnimationFrame(() => this.animate());
+    }
+
+    // Used for recording frames
+    forceRender() {
+        const t = this.currentTime - this.totalPausedTime;
+        this.renderFrame(t);
+    }
+}
+
+class WaveController {
+    constructor(visualizer) {
+        this.visualizer = visualizer;
+        this.waveList = document.getElementById('waveList');
+        this.nextColor = 0;
+        this.colors = ['#ff4444', '#44ff44', '#4444ff', '#ffff44', '#ff44ff', '#44ffff'];
+        this.selectedWaveEntry = null;
+        this.fps = 30;  // Match your monitor's refresh rate
+        
+        // Initialize frame downloader
+        this.frameDownloader = new FrameDownloader();
+        
+        // Initialize k-space map
+        this.kSpace = new KSpaceMap(document.getElementById('kSpace'), (kx, ky) => {
+            if (this.selectedWaveEntry) {
+                this.selectedWaveEntry.querySelector('.kx').value = kx.toFixed(2);
+                this.selectedWaveEntry.querySelector('.ky').value = ky.toFixed(2);
+                this.updateWaveFromEntry(this.selectedWaveEntry);
+            }
+        });
+        
+        this.addGlobalControls();
+        
+        document.getElementById('addWave').addEventListener('click', () => {
+            this.addWaveEntry();
+        });
+        
+        this.addWaveEntry();
+    }
+
+    addGlobalControls() {
+        const controlsDiv = document.querySelector('.controls');
+        const globalControls = document.createElement('div');
+        globalControls.className = 'global-controls';
+        globalControls.innerHTML = `
+            <div class="control-section">
+                <div class="button-group">
+                    <button id="pausePlay" class="control-btn">
+                        <span class="play-icon">⏸</span> Pause
+                    </button>
+                    <button id="recordGif" class="control-btn">
+                        🔴 Record Frames
+                    </button>
+                </div>
+                <div id="recordingStatus" style="display: none; margin-top: 8px; text-align: center; color: #e5e7eb;">
+                    Recording: <span id="frameCount">0/0</span> frames
+                </div>
+            </div>
+    
+            <div class="control-section">
+                <label title="Grid density">Grid Size:</label>
+                <div class="input-group">
+                    <input type="range" id="gridSize" min="0" max="100" value="40" step="1">
+                    <span class="unit" id="gridSizeValue">40 px</span>
+                </div>
+            </div>
+    
+            <div class="control-section">
+                <h3>Wave Presets</h3>
+                <select id="wavePresets" class="preset-select">
+                    <option value="">Choose a preset...</option>
+                    <option value="none">None</option>
+                    <option value="bloch-spiral">Bloch Spiral</option>
+                    <option value="neel-spiral">Néel Spiral</option>
+                    <option value="standing">Standing Wave</option>
+                    <option value="hexagonal">Hexagonal Pattern</option>
+                    <option value="square-lattice">Square Lattice</option>
+                    <option value="diagonal-cross">Diagonal Cross</option>
+                    <option value="triple-spiral">Triple Spiral</option>
+                </select>
+            </div>
+        `;
+        
+        controlsDiv.insertBefore(globalControls, controlsDiv.firstChild);
+        this.setupGlobalControlListeners();
+    }
+
+    setupGlobalControlListeners() {
+        const pausePlay = document.getElementById('pausePlay');
+        pausePlay.addEventListener('click', () => {
+            const isPaused = !this.visualizer.isPaused;
+            this.visualizer.setPaused(isPaused);
+            pausePlay.innerHTML = isPaused ? 
+                '<span class="play-icon">▶</span> Play' : 
+                '<span class="pause-icon">⏸</span> Pause';
+        });
+    
+        const recordButton = document.getElementById('recordGif');
+        recordButton.addEventListener('click', () => {
+            this.startRecording();
+        });
+    
+        const presetSelect = document.getElementById('wavePresets');
+        presetSelect.addEventListener('change', (e) => {
+            const preset = e.target.value;
+            if (preset) {
+                this.loadPreset(preset);
+            }
+            presetSelect.value = "";
+        });
+    
+        const gridSizeInput = document.getElementById('gridSize');
+        const gridSizeValue = document.getElementById('gridSizeValue');
+        gridSizeInput.addEventListener('input', (e) => {
+            const newSize = parseInt(e.target.value);
+            gridSizeValue.textContent = `${newSize} px`;
+            this.visualizer.gridSize = newSize;
+            this.visualizer.setupVectorsAndCircles();
+        });
+    }
+
+    calculateFramesForCycle() {
+        if (!this.visualizer.waves.length) {
+            return 0;
+        }
+        
+        // Find the highest frequency
+        let maxFreq = 0;
+        
+        this.visualizer.waves.forEach(wave => {
+            if (wave.freq > maxFreq) {
+                maxFreq = wave.freq;
+            }
+        });
+        
+        if (maxFreq === 0) {
+            return 0;
+        }
+        
+        // For one complete cycle (2π) at configured FPS:
+        // Period T = 2π/freq where freq is in Hz
+        // Number of frames = T * fps
+        // Therefore, frames = (2π/freq) * fps
+        return Math.ceil((2 * Math.PI / maxFreq) * this.fps);
+    }
+
+
+    startRecording() {
+        const framesNeeded = this.calculateFramesForCycle();
+        if (framesNeeded === 0) {
+            alert('No waves present or all frequencies are 0');
+            return;
+        }
+
+        console.log(`Recording ${framesNeeded} frames for one complete cycle at ${this.fps} FPS`);
+        this.frameDownloader.startRecording(this.visualizer, framesNeeded);
+    }
+
+    addWaveEntry() {
+        const waveDiv = document.createElement('div');
+        waveDiv.className = 'wave-entry';
+        const color = this.colors[this.nextColor % this.colors.length];
+        this.nextColor++;
+        
+        waveDiv.innerHTML = `
+            <div class="control-row">
+                <label title="Wave type">Type:</label>
+                <select class="wave-type wave-type-select">
+                    <option value="plane">Plane Wave</option>
+                    <option value="bloch">Bloch Wave</option>
+                    <option value="neel">Néel Wave</option>
+                </select>
+            </div>
+            <div class="magnetic-controls" style="display: none;">
+                <div class="control-row">
+                    <label title="Spin chirality">Chirality:</label>
+                    <select class="chirality">
+                        <option value="1">Right-handed</option>
+                        <option value="-1">Left-handed</option>
+                    </select>
+                </div>
+            </div>
+            <div class="plane-wave-controls">
+                <div class="control-row">
+                    <label title="Wave mode">Mode:</label>
+                    <select class="wave-mode">
+                        <option value="longitudinal">Longitudinal</option>
+                        <option value="transverse">Transverse</option>
+                    </select>
+                </div>
+            </div>
+            <div class="control-row">
+                <label title="Wavenumber x-component">kx:</label>
+                <div class="input-group">
+                    <input type="number" class="kx" value="1" step="0.1">
+                    <span class="unit">2π/Å</span>
+                </div>
+                <label title="Wavenumber y-component">ky:</label>
+                <div class="input-group">
+                    <input type="number" class="ky" value="0" step="0.1">
+                    <span class="unit">2π/Å</span>
+                </div>
+            </div>
+            <div class="control-row">
+                <label title="Wave frequency">Freq:</label>
+                <div class="input-group">
+                    <input type="number" class="freq" value="1" step="0.1">
+                    <span class="unit">Hz</span>
+                </div>
+                <label title="Wave phase">Phase:</label>
+                <div class="input-group">
+                    <input type="number" class="phase" value="0" step="0.125">
+                    <span class="unit">π</span>
+                </div>
+            </div>
+            <div class="control-row">
+                <label title="Wave amplitude">Amplitude:</label>
+                <div class="input-group">
+                    <input type="number" class="amplitude" value="1" step="0.1">
+                    <span class="unit">a.u.</span>
+                </div>
+            </div>
+            <button class="remove-btn">Remove Wave</button>
+        `;
+        
+        this.waveList.appendChild(waveDiv);
+        
+        const typeSelect = waveDiv.querySelector('.wave-type');
+        const magneticControls = waveDiv.querySelector('.magnetic-controls');
+        const planeWaveControls = waveDiv.querySelector('.plane-wave-controls');
+        const freqInput = waveDiv.querySelector('.freq');
+        
+        typeSelect.addEventListener('change', (e) => {
+            const isMagnetic = e.target.value !== 'plane';
+            magneticControls.style.display = isMagnetic ? 'block' : 'none';
+            planeWaveControls.style.display = isMagnetic ? 'none' : 'block';
+            freqInput.value = isMagnetic ? '0' : '1';
+            this.updateWaveFromEntry(waveDiv);
+        });
+        
+        waveDiv.addEventListener('click', (e) => {
+            if (!e.target.classList.contains('remove-btn')) {
+                this.selectWaveEntry(waveDiv);
+            }
+        });
+        
+        waveDiv.querySelectorAll('input, select').forEach(input => {
+            input.addEventListener('input', () => this.updateWaveFromEntry(waveDiv));
+        });
+        
+        waveDiv.querySelector('.remove-btn').addEventListener('click', () => {
+            const index = Array.from(this.waveList.children).indexOf(waveDiv);
+            this.visualizer.removeWave(index);
+            this.kSpace.removeVector(index);
+            if (this.selectedWaveEntry === waveDiv) {
+                this.selectedWaveEntry = null;
+            }
+            waveDiv.remove();
+        });
+        
+        this.updateWaveFromEntry(waveDiv);
+        this.selectWaveEntry(waveDiv);
+    }
+
+    clearAllWaves() {
+        while (this.waveList.firstChild) {
+            this.waveList.firstChild.querySelector('.remove-btn').click();
+        }
+        this.visualizer.waves = [];
+        this.kSpace.clearAllVectors();
+    }
+
+    loadPreset(presetName) {
+        this.clearAllWaves();
+        
+        switch (presetName) {
+            case 'none':
+                break;
+                
+            case 'bloch-spiral':
+                this.addMagneticWave('bloch', 1, 0, 1, 0, 1, 1);
+                this.addMagneticWave('bloch', 0, 1, 1, 0.5, 1, 1);
+                break;
+                
+            case 'neel-spiral':
+                this.addMagneticWave('neel', 1, 0, 1, 0, 1, 1);
+                this.addMagneticWave('neel', 0, 1, 1, 0.5, 1, 1);
+                break;
+                
+            case 'standing':
+                this.addMagneticWave('plane', 1, 0, 1, 0, 0.5, 1, 'longitudinal');
+                this.addMagneticWave('plane', -1, 0, 1, 0, 0.5, 1, 'longitudinal');
+                break;
+
+            case 'hexagonal':
+                for (let i = 0; i < 6; i++) {
+                    const angle = (i * Math.PI) / 3;
+                    this.addMagneticWave('plane', 
+                        Math.cos(angle), 
+                        Math.sin(angle), 
+                        1, 
+                        0,
+                        0.3,
+                        1,
+                        'longitudinal'
+                    );
+                }
+                break;
+
+            case 'square-lattice':
+                this.addMagneticWave('plane', 1, 0, 1, 0, 0.5, 1, 'longitudinal');
+                this.addMagneticWave('plane', -1, 0, 1, 0, 0.5, 1, 'longitudinal');
+                this.addMagneticWave('plane', 0, 1, 1, 0, 0.5, 1, 'longitudinal');
+                this.addMagneticWave('plane', 0, -1, 1, 0, 0.5, 1, 'longitudinal');
+                break;
+
+            case 'diagonal-cross':
+                this.addMagneticWave('plane', 1, 1, 1, 0, 0.35, 1, 'longitudinal');
+                this.addMagneticWave('plane', -1, 1, 1, 0, 0.35, 1, 'longitudinal');
+                this.addMagneticWave('plane', 1, -1, 1, 0, 0.35, 1, 'longitudinal');
+                this.addMagneticWave('plane', -1, -1, 1, 0, 0.35, 1, 'longitudinal');
+                break;
+
+            case 'triple-spiral':
+                for (let i = 0; i < 3; i++) {
+                    const angle = (i * 2 * Math.PI) / 3;
+                    this.addMagneticWave('bloch', 
+                        Math.cos(angle), 
+                        Math.sin(angle), 
+                        1, 
+                        angle / Math.PI, 
+                        0.4,
+                        1
+                    );
+                }
+                break;
+        }
+    }
+
+    addMagneticWave(type, kx, ky, freq = 0, phase, amplitude, chirality = 1, mode = 'longitudinal') {
+        this.addWaveEntry();
+        const wave = this.waveList.lastElementChild;
+        wave.querySelector('.wave-type').value = type;
+        wave.querySelector('.kx').value = kx.toFixed(2);
+        wave.querySelector('.ky').value = ky.toFixed(2);
+        wave.querySelector('.freq').value = type === 'plane' ? freq : 0;
+        wave.querySelector('.phase').value = phase.toFixed(3);
+        wave.querySelector('.amplitude').value = amplitude;
+        
+        const magneticControls = wave.querySelector('.magnetic-controls');
+        const planeWaveControls = wave.querySelector('.plane-wave-controls');
+        
+        if (type !== 'plane') {
+            magneticControls.style.display = 'block';
+            planeWaveControls.style.display = 'none';
+            wave.querySelector('.chirality').value = chirality;
+        } else {
+            magneticControls.style.display = 'none';
+            planeWaveControls.style.display = 'block';
+            wave.querySelector('.wave-mode').value = mode;
+        }
+        
+        this.updateWaveFromEntry(wave);
+    }
+updateWaveFromEntry(waveDiv) {
+        const index = Array.from(this.waveList.children).indexOf(waveDiv);
+        const type = waveDiv.querySelector('.wave-type').value;
+        const kx = parseFloat(waveDiv.querySelector('.kx').value);
+        const ky = parseFloat(waveDiv.querySelector('.ky').value);
+        const freq = parseFloat(waveDiv.querySelector('.freq').value);
+        const phase = parseFloat(waveDiv.querySelector('.phase').value) * Math.PI;
+        const amplitude = parseFloat(waveDiv.querySelector('.amplitude').value);
+        const chirality = parseInt(waveDiv.querySelector('.chirality')?.value || 1);
+        const isLongitudinal = type === 'plane' && 
+            waveDiv.querySelector('.wave-mode')?.value === 'longitudinal';
+
+        const wave = new PlaneWave(kx, ky, freq, phase, amplitude, type, chirality, isLongitudinal);
+        
+        if (index >= this.visualizer.waves.length) {
+            this.visualizer.waves.push(wave);
+        } else {
+            this.visualizer.waves[index] = wave;
+        }
+        
+        this.kSpace.updateVector(index, kx, ky, this.colors[index % this.colors.length]);
+    }
+
+    selectWaveEntry(waveDiv) {
+        if (this.selectedWaveEntry) {
+            this.selectedWaveEntry.classList.remove('selected');
+        }
+        this.selectedWaveEntry = waveDiv;
+        waveDiv.classList.add('selected');
+    }
+}
+
+        // Initialize the application
+        const visualizer = new WaveVisualizer();
+        const controller = new WaveController(visualizer);
+    </script>
+</body>
+</html>
